@@ -3,6 +3,9 @@ package br.edu.ifsp.scl.ads.contactspdm.ui
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.Message
 import android.view.ContextMenu
 import android.view.Menu
 import android.view.MenuItem
@@ -15,10 +18,12 @@ import androidx.appcompat.app.AppCompatActivity
 import br.edu.ifsp.scl.ads.contactspdm.R
 import br.edu.ifsp.scl.ads.contactspdm.adapter.ContactAdapter
 import br.edu.ifsp.scl.ads.contactspdm.controller.ContactController
+import br.edu.ifsp.scl.ads.contactspdm.controller.ContactRoomController
 import br.edu.ifsp.scl.ads.contactspdm.databinding.ActivityMainBinding
 import br.edu.ifsp.scl.ads.contactspdm.model.Constant.EXTRA_CONTACT
 import br.edu.ifsp.scl.ads.contactspdm.model.Constant.EXTRA_VIEW_CONTACT
 import br.edu.ifsp.scl.ads.contactspdm.model.Contact
+import java.util.Arrays
 
 class MainActivity : AppCompatActivity() {
     private val amb: ActivityMainBinding by lazy {
@@ -26,9 +31,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Data source
-    private val contactList: MutableList<Contact> by lazy {
-        contactController.getContacts()
-    }
+    private val contactList: MutableList<Contact> = mutableListOf()
 
     // Adapter
     private val contactAdapter: ContactAdapter by lazy {
@@ -36,8 +39,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Controller
-    private val contactController: ContactController by lazy {
-        ContactController(this)
+    private val contactController: ContactRoomController by lazy {
+        ContactRoomController(this)
     }
 
     private lateinit var carl: ActivityResultLauncher<Intent>
@@ -59,22 +62,16 @@ class MainActivity : AppCompatActivity() {
                     result.data?.getParcelableExtra(EXTRA_CONTACT)
                 }
                 contact?.let { newOrEditedContact ->
-                    val position = contactList.indexOfFirst { it.id == newOrEditedContact.id }
-                    if (position != -1){
-                        contactList[position] = newOrEditedContact
+                    if (contactList.any{ it.id == newOrEditedContact.id}){
                         contactController.editContact(newOrEditedContact)
                     }
                     else {
-                        val id = contactController.insertContact(newOrEditedContact)
-                        newOrEditedContact.id = id
-                        contactList.add(newOrEditedContact)
+                        contactController.insertContact(newOrEditedContact)
                     }
-                    contactAdapter.notifyDataSetChanged()
                 }
             }
         }
 
-        //fillContacts()
         registerForContextMenu(amb.contactsLv)
         amb.contactsLv.setOnItemClickListener { _, _, position, _ ->
             val contact = contactList[position]
@@ -83,7 +80,7 @@ class MainActivity : AppCompatActivity() {
             viewContactIntent.putExtra(EXTRA_VIEW_CONTACT, true)
             startActivity(viewContactIntent)
         }
-
+        contactController.getContacts()
 
         amb.contactsLv.adapter = contactAdapter
     }
@@ -114,9 +111,7 @@ class MainActivity : AppCompatActivity() {
         val position = (item.menuInfo as AdapterContextMenuInfo).position
         return when(item.itemId) {
             R.id.removeContactMi -> {
-                contactController.removeContact(contactList[position].id)
-                contactList.removeAt(position)
-                contactAdapter.notifyDataSetChanged()
+                contactController.removeContact(contactList[position])
                 Toast.makeText(this, "Contact removed.", Toast.LENGTH_SHORT).show()
                 true
             }
@@ -148,6 +143,21 @@ class MainActivity : AppCompatActivity() {
                     "Email $i"
                 )
             )
+        }
+    }
+
+    fun updateContactList(contacts: MutableList<Contact>) {
+        contactList.clear()
+        contactList.addAll(contacts)
+        contactAdapter.notifyDataSetChanged()
+    }
+
+    val uiUpdaterHandler: Handler = object: Handler(Looper.getMainLooper()){
+        override fun handleMessage(msg: Message) {
+            super.handleMessage(msg)
+            msg.data.getParcelableArrayList<Contact>("CONTACT_ARRAY")?.let { _contactArray ->
+                updateContactList(_contactArray.toMutableList())
+            }
         }
     }
 }

@@ -1,13 +1,22 @@
 package br.edu.ifsp.scl.ads.contactspdm.model
 
 import android.os.Parcelable
+import androidx.annotation.NonNull
+import androidx.room.Entity
+import androidx.room.PrimaryKey
 import kotlinx.parcelize.Parcelize
 
 @Parcelize
+@Entity
 data class Contact(
-    var id: Int = -1,
-    var name: String = "",
-    var address: String = "",
-    var phone: String = "",
-    var email: String = ""
+    @PrimaryKey(autoGenerate = true)
+    var id: Int?,
+    @NonNull
+    var name: String,
+    @NonNull
+    var address: String,
+    @NonNull
+    var phone: String,
+    @NonNull
+    var email: String
 ): Parcelable
