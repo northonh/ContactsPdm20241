@@ -19,6 +19,7 @@ import br.edu.ifsp.scl.ads.contactspdm.R
 import br.edu.ifsp.scl.ads.contactspdm.adapter.ContactAdapter
 import br.edu.ifsp.scl.ads.contactspdm.controller.ContactController
 import br.edu.ifsp.scl.ads.contactspdm.controller.ContactRoomController
+import br.edu.ifsp.scl.ads.contactspdm.controller.ContactRtDbFbController
 import br.edu.ifsp.scl.ads.contactspdm.databinding.ActivityMainBinding
 import br.edu.ifsp.scl.ads.contactspdm.model.Constant.EXTRA_CONTACT
 import br.edu.ifsp.scl.ads.contactspdm.model.Constant.EXTRA_VIEW_CONTACT
@@ -26,6 +27,11 @@ import br.edu.ifsp.scl.ads.contactspdm.model.Contact
 import java.util.Arrays
 
 class MainActivity : AppCompatActivity() {
+    companion object {
+        const val GET_CONTACTS = 1 // Buscar os contatos na contactList do banco de dados
+        const val GET_CONTACTS_INTERVAL = 2000L // Intervalo de busca de contatos
+    }
+
     private val amb: ActivityMainBinding by lazy {
         ActivityMainBinding.inflate(layoutInflater)
     }
@@ -39,8 +45,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Controller
-    private val contactController: ContactRoomController by lazy {
-        ContactRoomController(this)
+    private val contactController: ContactRtDbFbController by lazy {
+        ContactRtDbFbController(this)
     }
 
     private lateinit var carl: ActivityResultLauncher<Intent>
@@ -53,24 +59,23 @@ class MainActivity : AppCompatActivity() {
             setSupportActionBar(this)
         }
 
-        carl = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == RESULT_OK) {
-                val contact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    result.data?.getParcelableExtra(EXTRA_CONTACT, Contact::class.java)
-                }
-                else {
-                    result.data?.getParcelableExtra(EXTRA_CONTACT)
-                }
-                contact?.let { newOrEditedContact ->
-                    if (contactList.any{ it.id == newOrEditedContact.id}){
-                        contactController.editContact(newOrEditedContact)
+        carl =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                if (result.resultCode == RESULT_OK) {
+                    val contact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        result.data?.getParcelableExtra(EXTRA_CONTACT, Contact::class.java)
+                    } else {
+                        result.data?.getParcelableExtra(EXTRA_CONTACT)
                     }
-                    else {
-                        contactController.insertContact(newOrEditedContact)
+                    contact?.let { newOrEditedContact ->
+                        if (contactList.any { it.id == newOrEditedContact.id }) {
+                            contactController.editContact(newOrEditedContact)
+                        } else {
+                            contactController.insertContact(newOrEditedContact)
+                        }
                     }
                 }
             }
-        }
 
         registerForContextMenu(amb.contactsLv)
         amb.contactsLv.setOnItemClickListener { _, _, position, _ ->
@@ -80,7 +85,14 @@ class MainActivity : AppCompatActivity() {
             viewContactIntent.putExtra(EXTRA_VIEW_CONTACT, true)
             startActivity(viewContactIntent)
         }
-        contactController.getContacts()
+        uiUpdaterHandler.apply {
+            sendMessageDelayed(
+                Message.obtain().apply {
+                    what = GET_CONTACTS
+                },
+                GET_CONTACTS_INTERVAL
+            )
+        }
 
         amb.contactsLv.adapter = contactAdapter
     }
@@ -109,21 +121,25 @@ class MainActivity : AppCompatActivity() {
 
     override fun onContextItemSelected(item: MenuItem): Boolean {
         val position = (item.menuInfo as AdapterContextMenuInfo).position
-        return when(item.itemId) {
+        return when (item.itemId) {
             R.id.removeContactMi -> {
-                contactController.removeContact(contactList[position])
-                Toast.makeText(this, "Contact removed.", Toast.LENGTH_SHORT).show()
+                contactList[position].id?.let {
+                    contactController.removeContact(it)
+                    Toast.makeText(this, "Contact removed.", Toast.LENGTH_SHORT).show()
+                }
                 true
             }
             R.id.editContactMi -> {
                 carl.launch(
-                    Intent(this, ContactActivity::class.java).apply{
+                    Intent(this, ContactActivity::class.java).apply {
                         putExtra(EXTRA_CONTACT, contactList[position])
                     }
                 )
                 true
             }
-            else -> { false }
+            else -> {
+                false
+            }
         }
     }
 
@@ -152,11 +168,24 @@ class MainActivity : AppCompatActivity() {
         contactAdapter.notifyDataSetChanged()
     }
 
-    val uiUpdaterHandler: Handler = object: Handler(Looper.getMainLooper()){
+    val uiUpdaterHandler: Handler = object : Handler(Looper.getMainLooper()) {
         override fun handleMessage(msg: Message) {
             super.handleMessage(msg)
-            msg.data.getParcelableArrayList<Contact>("CONTACT_ARRAY")?.let { _contactArray ->
-                updateContactList(_contactArray.toMutableList())
+            // Busca contatos ou atualiza a lista de acordo com o tipo de mensagem
+            if (msg.what == GET_CONTACTS) {
+                // Busca os contatos
+                contactController.getContacts()
+                sendMessageDelayed(
+                    Message.obtain().apply {
+                        what = GET_CONTACTS
+                    },
+                    GET_CONTACTS_INTERVAL
+                )
+            }
+            else {
+                msg.data.getParcelableArrayList<Contact>("CONTACT_ARRAY")?.let { _contactArray ->
+                    updateContactList(_contactArray.toMutableList())
+                }
             }
         }
     }

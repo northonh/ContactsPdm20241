@@ -49,7 +49,7 @@ class ContactActivity : AppCompatActivity() {
             }
             saveBt.setOnClickListener {
                 Contact(
-                    id = receivedContact?.id,
+                    id = receivedContact?.id?:hashCode(),
                     name = nameEt.text.toString(),
                     address = addressEt.text.toString(),
                     phone = phoneEt.text.toString(),
